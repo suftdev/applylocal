@@ -1,0 +1,65 @@
+{
+  "name": "applylocal",
+  "version": "0.2.0",
+  "description": "Local job application harness",
+  "type": "module",
+  "bin": {
+    "applylocal": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "evaluation",
+    "README.md",
+    "LICENSE",
+    "PRIVACY.md",
+    "SECURITY.md"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.json && chmod u+x dist/cli.js",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "dev": "tsx src/cli.ts",
+    "test": "tsx tests/apply.test.ts && tsx tests/browser.test.ts && tsx tests/claims.test.ts && tsx tests/concurrency.test.ts && tsx tests/confirmation.test.ts && tsx tests/doctor.test.ts && tsx tests/evaluate.test.ts && tsx tests/evidence-ops.test.ts && tsx tests/evidence.test.ts && tsx tests/handoff.test.ts && tsx tests/paths.test.ts && tsx tests/pdf.test.ts && tsx tests/policy.test.ts && tsx tests/reasoning.test.ts && tsx tests/recovery.test.ts && tsx tests/runtime.test.ts && tsx tests/safety-fixtures.test.ts && tsx tests/sites.test.ts && tsx tests/state-ops.test.ts && tsx tests/state.test.ts && tsx tests/url-evidence.test.ts && tsx tests/worker.test.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.42",
+    "@ai-sdk/google": "^4.0.51",
+    "@ai-sdk/openai": "^4.0.47",
+    "@ai-sdk/openai-compatible": "^3.0.40",
+    "@inquirer/prompts": "^7.8.4",
+    "ai": "^7.0.70",
+    "commander": "^14.0.0",
+    "mammoth": "^1.12.1",
+    "pdfjs-dist": "^6.2.108",
+    "playwright": "^1.55.0",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  },
+  "license": "MIT",
+  "author": "Abdulrahman Lukman",
+  "keywords": [
+    "job-applications",
+    "job-search",
+    "automation",
+    "playwright",
+    "ai",
+    "llm",
+    "browser-automation",
+    "cli",
+    "career"
+  ],
+  "homepage": "https://github.com/suftdev/applylocal#readme",
+  "bugs": {
+    "url": "https://github.com/suftdev/applylocal/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/suftdev/applylocal.git"
+  }
+}

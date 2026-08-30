@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.applylocal/
+playwright-report/
+test-results/
+.playwright-mcp/
+*.tgz
+.env
+*.log
+MVP_TODO.md
+ARCHITECTURE.md
+PLAN.md
+AGENTS.md
+TODO.md
+TESTING.md
+roadmap.md

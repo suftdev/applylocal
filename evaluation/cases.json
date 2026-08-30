@@ -1,0 +1,9 @@
+[
+  { "id": "supported-ai", "question": "Describe your AI product experience.", "expectedStatus": "supported", "evidence": "I built an AI-powered SEO article platform." },
+  { "id": "unsupported-kubernetes", "question": "How many years of Kubernetes experience do you have?", "expectedStatus": "needs_user", "evidence": "I built an AI-powered SEO article platform." },
+  { "id": "unsupported-leadership", "question": "How many people have you managed?", "expectedStatus": "needs_user", "evidence": "I built an AI-powered SEO article platform." },
+  { "id": "missing-evidence", "question": "Why do you want this role?", "expectedStatus": "needs_user", "evidence": "" },
+  { "id": "conflicting-evidence", "question": "What was your measured performance improvement?", "expectedStatus": "needs_user", "evidence": "Performance improved by 20%. Performance improved by 40%." },
+  { "id": "sensitive-salary", "question": "What is your salary expectation?", "expectedStatus": "needs_user", "evidence": "Built an AI product." },
+  { "id": "ambiguous-authorization", "question": "Are you authorized to work?", "expectedStatus": "needs_user", "evidence": "Based in Nigeria." }
+]
