@@ -27,6 +27,7 @@ import { chooseEvidenceSource } from "./paths.js";
 import { runDoctor } from "./doctor.js";
 import { evaluateCases } from "./evaluate.js";
 import { listModels, testProvider } from "./reasoning.js";
+import { GatewayReasoningModel } from "./reasoning.js";
 
 const packageVersion = (JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }).version;
 const program = new Command().name("applylocal").description("Local job application harness").version(packageVersion);
@@ -55,6 +56,40 @@ program.command("evaluate").description("Run the local reasoning safety dataset"
   console.log(JSON.stringify(result, null, 2));
   if (result.failed.length) process.exitCode = 1;
 });
+
+program.command("evals")
+  .description("Run live LLM-in-the-loop evaluation against one or more providers and write measured reports")
+  .option("--file <path>", "Evaluation JSON file")
+  .option("--provider <name>", "Provider to evaluate", "openai-compatible")
+  .option("--model <id>", "Model id for openai-compatible provider", "glm-5.3-flash")
+  .option("--base-url <url>", "API base URL for openai-compatible provider", "https://api.b.ai/v1")
+  .option("--out <dir>", "Report output directory", "evaluation/reports")
+  .action(async ({ file, provider, model, baseUrl, out }) => {
+    const { runEvalMatrix, writeReport } = await import("./evals.js");
+    const casesPath = file ? resolve(file) : resolve(dirname(dirname(fileURLToPath(import.meta.url))), "evaluation", "cases.json");
+    const reports = [];
+    for (const name of (provider as string).split(",")) {
+      let reasoningModel;
+      if (name === "openai-compatible") {
+        reasoningModel = new GatewayReasoningModel(model, "BAI_API_KEY", "openai-compatible", baseUrl);
+      } else if (name === "openai") {
+        reasoningModel = new GatewayReasoningModel(model || "gpt-4o-mini", "OPENAI_API_KEY", "openai");
+      } else if (name === "anthropic") {
+        reasoningModel = new GatewayReasoningModel(model || "claude-3-5-haiku-latest", "ANTHROPIC_API_KEY", "anthropic");
+      } else if (name === "google") {
+        reasoningModel = new GatewayReasoningModel(model || "gemini-2.0-flash", "GOOGLE_API_KEY", "google");
+      } else {
+        throw new Error(`Unknown provider: ${name}`);
+      }
+      process.stdout.write(`Evaluating ${name}/${model ?? "default"}…\n`);
+      const report = await runEvalMatrix(reasoningModel, { provider: name, modelId: model ?? "default" }, casesPath);
+      const written = await writeReport(report, resolve(out));
+      reports.push(written);
+      console.log(`  pass ${report.passRate} | refusal ${report.refusalRate} | fabrications ${report.fabricationIncidents} | median ${report.medianLatencyMs}ms -> ${written}`);
+    }
+    const totalFabrications = reports.length ? 0 : 1;
+    void totalFabrications;
+  });
 
 program.command("models").description("List models available from the configured provider").action(async () => {
   const setup = (await loadState()).setup;
