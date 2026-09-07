@@ -61,7 +61,7 @@ export async function runEvalMatrix(
     const expected = expectedStatusFor(item);
     const started = Date.now();
     try {
-      const proposed = await model.resolveAnswer({ question: item.question, evidence });
+      const proposed = await model.resolveAnswerStrict({ question: item.question, evidence });
       // resolveAnswer already validated through the guardrail; re-validate for the
       // judged record and detect guardrail-downgrades of a "supported" claim.
       const judged = validateProposedAnswer(proposed, evidence);
