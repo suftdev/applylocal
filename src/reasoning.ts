@@ -100,6 +100,16 @@ export class GatewayReasoningModel implements ReasoningModel {
     }
   }
 
+  // Honest-failure variant used by evaluation: no silent guardrail defaults.
+  async resolveAnswerStrict(request: AnswerRequest): Promise<ProposedAnswer> {
+    const selected = selectEvidence(request.evidence, request.question);
+    const sourceText = evidencePrompt(selected);
+    if (!sourceText) throw new Error("No readable registered evidence is available");
+    const output = await this.ask(proposedAnswerSchema, "You answer job application questions using only the supplied candidate evidence. Never infer or invent facts. Return needs_user when the evidence is insufficient. A supported answer must cite one or more exact source IDs.", `Question:\n${request.question}\n\nRegistered evidence:\n${sourceText}`, `{"status": "supported" | "needs_user", "answer": string, "sourceIds": string[], "reason": string}`);
+    if (output.status === "needs_user" && !output.reason) throw new Error("Provider returned needs_user without a reason (suspected parse failure)");
+    return output;
+  }
+
   async resolveAnswer({ question, evidence }: AnswerRequest): Promise<ProposedAnswer> {
     if (!process.env[this.credentialEnv]) throw new Error(`Missing model credential: ${this.credentialEnv}`);
     const selected = selectEvidence(evidence, question);
