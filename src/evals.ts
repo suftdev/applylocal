@@ -82,7 +82,7 @@ export async function runEvalMatrix(
         ...(gateBlocked ? { gateBlocked: true } : {}),
         citedValidIds,
         latencyMs,
-        answerOrError: gateBlocked ? judged.reason : judged.answer,
+        answerOrError: gateBlocked ? judged.reason : (judged.status === "needs_user" ? judged.reason || "(no reason given)" : judged.answer),
       });
     } catch (error) {
       results.push({
