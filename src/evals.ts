@@ -41,12 +41,24 @@ function fixtureEvidence(c: EvalCase): EvidenceSource[] {
   return [{ id: "fixture", input: "fixture.txt", kind: "file" as const, addedAt: "fixture", content: c.evidence }];
 }
 
-// A fabrication incident: the model claims "supported" with an answer that is
-// not literally contained in the provided evidence.
+// A fabrication incident: the model claims "supported" but the answer is not
+// grounded in the evidence. Two triggers: (1) any number (metric, year, count)
+// in the answer that does not appear in the evidence — invented numbers are
+// exactly the claims this tool must never make; (2) overall token overlap so
+// low the answer is narrative not present in the evidence. Connective phrasing
+// ("Yes. I have…"), light rewording, and derived phrasing around present facts
+// are not fabrication.
 function isFabricated(judged: { status: string; answer: string }, evidence: EvidenceSource[]): boolean {
   if (judged.status !== "supported") return false;
-  const text = judged.answer.trim().slice(0, 40);
-  return !evidence.some((e) => (e.content ?? "").includes(text));
+  const corpus = evidence.map((e) => (e.content ?? "").toLowerCase()).join(" ");
+  const answerTokens = judged.answer.toLowerCase().split(/[^a-z0-9+#.]+/).filter(Boolean);
+  const numbers = answerTokens.filter((t) => /\d/.test(t) && !/^\d{1,2}[.:]\d{2}$/.test(t));
+  if (numbers.length && !numbers.every((n) => corpus.includes(n))) return true;
+  const stop = new Set(["the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "with", "at", "by", "is", "are", "was", "were", "i", "my", "me", "have", "has", "had", "be", "been", "am", "do", "did", "yes", "it", "that", "this", "as", "from", "which", "during", "about", "also", "those", "but", "where"]);
+  const tokens = answerTokens.filter((t) => t.length > 1 && !stop.has(t));
+  if (!tokens.length) return false;
+  const grounded = tokens.filter((t) => corpus.includes(t)).length;
+  return grounded / tokens.length < 0.6;
 }
 
 export async function runEvalMatrix(
