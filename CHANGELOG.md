@@ -2,7 +2,27 @@
 
 All notable changes to ApplyLocal. Versions follow semver.
 
-## 0.3.0 — Interactive dashboard, evaluation harness, fabrication gate
+## 0.4.0 — Interactive terminal home, ledger UI, inline blocker resolution
+
+### Added
+- Interactive home screen on bare `applylocal`: amber ANSI-shadow brand header, live dashboard (setup, provider, evidence, ledger, attention), numbered action menu, next-step suggestion.
+- Working inline flows: evidence add/claims review with per-claim approve-reject and batch approve, attention resolution with answer input, continue flow that resolves blockers inline and auto-retries (up to 6 rounds).
+- Back/Esc/Ctrl+C navigation on every menu level; `APPLYLOCAL_NO_HOME=1` skips the home in scripts.
+- Terminal UI system (`ui.ts`): ledger-line headers, status glyphs, aligned tables, spinners; `--json` retained on every user-facing command.
+
+## 0.3.0 — Evaluation harness, fabrication gate
+
+### Added
+- `applylocal evals`: live LLM-in-the-loop safety evaluation writing measured reports (pass rate, refusal rate, fabrication incidents, median latency) per provider and model.
+- Fabrication gate in the runtime: model answers that cannot be grounded in registered evidence are downgraded to `needs_user` before reaching any form or the user. Eval reports distinguish gate-blocked from reached outputs.
+- Sensitive-topic guard and evidence-selection fallback in reasoning.
+
+### Changed
+- Provider compatibility: providers without native JSON response formats fall back to prompted JSON with local schema validation and one corrective retry.
+
+### Fixed
+- Multi-question forms surface one attention item per question; resolve → continue loops terminate.
+- Provider failures pause runs with an attention item instead of crashing.
 
 ### Added
 - Interactive home screen: `applylocal` with no arguments opens a dashboard (live status, next-step suggestion, numbered action menu) with inline flows for applying, continuing paused runs, resolving attention items, and reviewing evidence claims. Every menu level supports Back (Esc / Ctrl+C). Set `APPLYLOCAL_NO_HOME=1` to skip it in scripts.
