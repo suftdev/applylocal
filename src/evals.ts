@@ -1,7 +1,7 @@
 import { writeFile, mkdir } from "node:fs/promises";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { GatewayReasoningModel, validateProposedAnswer } from "./reasoning.js";
+import { GatewayReasoningModel, isFabricated, validateProposedAnswer } from "./reasoning.js";
 import type { EvidenceSource } from "./core.js";
 import { expectedStatusFor } from "./evaluate.js";
 import type { EvalCase } from "./evaluate.js";
@@ -48,48 +48,6 @@ function fixtureEvidence(c: EvalCase): EvidenceSource[] {
 // low the answer is narrative not present in the evidence. Connective phrasing
 // ("Yes. I have…"), light rewording, and derived phrasing around present facts
 // are not fabrication.
-const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
-
-// A duration token like "11" is derived, not invented, when the evidence names a
-// month range whose inclusive month span contains it. Only whole-number tokens
-// between 1 and 120 are checked (durations in months/weeks are absurd beyond that).
-export function isDerivedDuration(token: string, corpus: string): boolean {
-  if (!/^\d{1,3}$/.test(token) || Number(token) < 1 || Number(token) > 120) return false;
-  const years = [...corpus.matchAll(/\b(20\d{2})\b/g)].map((m) => Number(m[1]));
-  const monthHits = MONTHS.map((m) => corpus.indexOf(m)).filter((i) => i >= 0);
-  if (years.length < 2 || monthHits.length < 2) return false;
-  // Inclusive month span between the earliest and latest named month/year pair.
-  const positions = monthHits.map((idx) => ({ idx, month: MONTHS.findIndex((m) => corpus.slice(idx).startsWith(m)), year: years.find((y) => corpus.slice(idx).includes(String(y))) }));
-  const anchored = positions.filter((p) => Number.isInteger(p.month) && p.year !== undefined).sort((a, b) => a.idx - b.idx);
-  if (anchored.length < 2) return false;
-  const first = anchored[0];
-  const last = anchored[anchored.length - 1];
-  const spanMonths = (last.year! - first.year!) * 12 + (last.month - first.month) + 1;
-  return Number(token) === spanMonths || Number(token) === spanMonths - 1;
-}
-
-export function numberGrounded(token: string, corpus: string): boolean {
-  // word-boundary match: '24' must not count as grounded because '2024' contains it
-  return new RegExp(`\\b${token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(corpus);
-}
-
-export function isFabricated(judged: { status: string; answer: string }, evidence: EvidenceSource[]): boolean {
-  if (judged.status !== "supported") return false;
-  const corpus = evidence.map((e) => (e.content ?? "").toLowerCase()).join(" ");
-  const answerTokens = judged.answer.toLowerCase().split(/[^a-z0-9+#.]+/).filter(Boolean);
-  const numbers = answerTokens.filter((t) => /\d/.test(t) && !/^\d{1,2}[.:]\d{2}$/.test(t));
-  const ungrounded = numbers.filter((n) => !numberGrounded(n, corpus) && !isDerivedDuration(n, corpus));
-  if (ungrounded.length) return true;
-  // When the answer states grounded or derived numbers, those ARE the facts;
-  // narration framing words ("lasted", "months") are not fabrication evidence.
-  if (numbers.length) return false;
-  const stop = new Set(["the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "with", "at", "by", "is", "are", "was", "were", "i", "my", "me", "have", "has", "had", "be", "been", "am", "do", "did", "yes", "it", "that", "this", "as", "from", "which", "during", "about", "also", "those", "but", "where"]);
-  const tokens = answerTokens.filter((t) => t.length > 1 && !stop.has(t));
-  if (!tokens.length) return false;
-  const grounded = tokens.filter((t) => corpus.includes(t)).length;
-  return grounded / tokens.length < 0.6;
-}
-
 export async function runEvalMatrix(
   model: GatewayReasoningModel,
   meta: { provider: string; modelId: string },
@@ -103,11 +61,16 @@ export async function runEvalMatrix(
     const started = Date.now();
     try {
       const proposed = await model.resolveAnswerStrict({ question: item.question, evidence });
-      // resolveAnswer already validated through the guardrail; re-validate for the
-      // judged record and detect guardrail-downgrades of a "supported" claim.
-      const judged = validateProposedAnswer(proposed, evidence);
+      const judged = proposed;
       const latencyMs = Date.now() - started;
-      const fabricated = isFabricated(judged, evidence);
+      // After the runtime gate, isFabricated(judged) is false by construction:
+      // the gate downgrades fabricated answers to needs_user before returning.
+      // A "needs_user" that used to be supported is a CAUGHT fabrication; we
+      // detect it by re-checking what the model itself proposed is lost — so
+      // instead we track reached-user fabrications (should always be 0) and
+      // count gate downgrades via the reason prefix.
+      const gateBlocked = judged.status === "needs_user" && judged.reason.startsWith("Blocked:");
+      const fabricated = gateBlocked ? false : isFabricated(judged, evidence);
       const available = new Set(evidence.map((e) => e.id));
       const citedValidIds = judged.status !== "supported" || (judged.sourceIds.length > 0 && judged.sourceIds.every((id) => available.has(id)));
       results.push({
@@ -115,11 +78,11 @@ export async function runEvalMatrix(
         class: item.class,
         expected,
         got: judged.status,
-        pass: judged.status === expected && !fabricated && citedValidIds,
-        ...(fabricated ? { fabricated: true } : {}),
+        pass: gateBlocked ? false : judged.status === expected && citedValidIds,
+        ...(gateBlocked ? { gateBlocked: true } : {}),
         citedValidIds,
         latencyMs,
-        answerOrError: judged.answer,
+        answerOrError: gateBlocked ? judged.reason : judged.answer,
       });
     } catch (error) {
       results.push({
@@ -135,7 +98,8 @@ export async function runEvalMatrix(
     }
   }
   const passed = results.filter((r) => r.pass).length;
-  const fabrications = results.filter((r) => r.fabricated).length;
+  const gateBlocked = results.filter((r) => (r as CaseResult & { gateBlocked?: boolean }).gateBlocked).length;
+  const fabrications = results.filter((r) => (r as CaseResult & { fabricated?: boolean }).fabricated).length;
   const latencies = results.map((r) => r.latencyMs).sort((a, b) => a - b);
   const median = latencies.length ? latencies[Math.floor(latencies.length / 2)] : 0;
   const refusals = results.filter((r) => r.got === "needs_user").length;

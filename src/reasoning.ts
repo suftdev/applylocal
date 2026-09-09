@@ -127,7 +127,13 @@ export class GatewayReasoningModel implements ReasoningModel {
     if (!sourceText) return { status: "needs_user", answer: "", sourceIds: [], reason: "No readable registered evidence is available" };
     const output = await this.ask(proposedAnswerSchema, "You answer job application questions using only the supplied candidate evidence. Never infer or invent facts. Return needs_user when the evidence is insufficient. A supported answer must cite one or more exact source IDs.", `Question:\n${request.question}\n\nRegistered evidence:\n${sourceText}`, `{"status": "supported" | "needs_user", "answer": string, "sourceIds": string[], "reason": string}`);
     if (output.status === "needs_user" && !output.reason) throw new Error("Provider returned needs_user without a reason (suspected parse failure)");
-    return output;
+    const judged = validateProposedAnswer(output, selected);
+    // Runtime fabrication gate: a supported answer that asserts details absent
+    // from the registered evidence is downgraded before it can reach the user.
+    if (judged.status === "supported" && isFabricated(judged, selected)) {
+      return { status: "needs_user", answer: "", sourceIds: [], reason: "Blocked: the drafted answer contained details not supported by the registered evidence. Add that evidence or answer this field yourself." };
+    }
+    return judged;
   }
 
   async resolveAnswer({ question, evidence }: AnswerRequest): Promise<ProposedAnswer> {
@@ -183,4 +189,46 @@ export async function testProvider(backend: ReasoningBackend): Promise<{ ok: tru
   if (!process.env[backend.credentialEnv]) throw new Error(`Missing model credential: ${backend.credentialEnv}`);
   await model.resolveAnswer({ question: "What is the candidate's verified role?", evidence: [{ id: "synthetic", input: "synthetic fixture", kind: "file", addedAt: "test", content: "The candidate is a software engineer." }] });
   return { ok: true, provider: backend.provider, model: backend.model };
+}
+
+const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+
+// A duration token like "11" is derived, not invented, when the evidence names a
+// month range whose inclusive month span contains it. Only whole-number tokens
+// between 1 and 120 are checked (durations in months/weeks are absurd beyond that).
+export function isDerivedDuration(token: string, corpus: string): boolean {
+  if (!/^\d{1,3}$/.test(token) || Number(token) < 1 || Number(token) > 120) return false;
+  const years = [...corpus.matchAll(/\b(20\d{2})\b/g)].map((m) => Number(m[1]));
+  const monthHits = MONTHS.map((m) => corpus.indexOf(m)).filter((i) => i >= 0);
+  if (years.length < 2 || monthHits.length < 2) return false;
+  // Inclusive month span between the earliest and latest named month/year pair.
+  const positions = monthHits.map((idx) => ({ idx, month: MONTHS.findIndex((m) => corpus.slice(idx).startsWith(m)), year: years.find((y) => corpus.slice(idx).includes(String(y))) }));
+  const anchored = positions.filter((p) => Number.isInteger(p.month) && p.year !== undefined).sort((a, b) => a.idx - b.idx);
+  if (anchored.length < 2) return false;
+  const first = anchored[0];
+  const last = anchored[anchored.length - 1];
+  const spanMonths = (last.year! - first.year!) * 12 + (last.month - first.month) + 1;
+  return Number(token) === spanMonths || Number(token) === spanMonths - 1;
+}
+
+export function numberGrounded(token: string, corpus: string): boolean {
+  // word-boundary match: '24' must not count as grounded because '2024' contains it
+  return new RegExp(`\\b${token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(corpus);
+}
+
+export function isFabricated(judged: { status: string; answer: string }, evidence: EvidenceSource[]): boolean {
+  if (judged.status !== "supported") return false;
+  const corpus = evidence.map((e) => (e.content ?? "").toLowerCase()).join(" ");
+  const answerTokens = judged.answer.toLowerCase().split(/[^a-z0-9+#.]+/).filter(Boolean);
+  const numbers = answerTokens.filter((t) => /\d/.test(t) && !/^\d{1,2}[.:]\d{2}$/.test(t));
+  const ungrounded = numbers.filter((n) => !numberGrounded(n, corpus) && !isDerivedDuration(n, corpus));
+  if (ungrounded.length) return true;
+  // When the answer states grounded or derived numbers, those ARE the facts;
+  // narration framing words ("lasted", "months") are not fabrication evidence.
+  if (numbers.length) return false;
+  const stop = new Set(["the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "with", "at", "by", "is", "are", "was", "were", "i", "my", "me", "have", "has", "had", "be", "been", "am", "do", "did", "yes", "it", "that", "this", "as", "from", "which", "during", "about", "also", "those", "but", "where"]);
+  const tokens = answerTokens.filter((t) => t.length > 1 && !stop.has(t));
+  if (!tokens.length) return false;
+  const grounded = tokens.filter((t) => corpus.includes(t)).length;
+  return grounded / tokens.length < 0.6;
 }
