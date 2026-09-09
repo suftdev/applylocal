@@ -19,7 +19,7 @@ import { dirname, resolve } from "node:path";
 import { apply, continueRun, recoverRun } from "./apply.js";
 import { loadState, saveState, setupMissing } from "./core.js";
 import { runReasoningSetup, runSetup } from "./setup.js";
-import { renderHandoff } from "./handoff.js";
+import { renderHandoff, renderHandoffText } from "./handoff.js";
 import { startWorker } from "./worker.js";
 import { WorkerClient } from "./worker-client.js";
 import { addEvidence, removeEvidence, reviewSummary } from "./evidence.js";
@@ -28,9 +28,18 @@ import { runDoctor } from "./doctor.js";
 import { evaluateCases } from "./evaluate.js";
 import { listModels, testProvider } from "./reasoning.js";
 import { GatewayReasoningModel } from "./reasoning.js";
+import { runHome } from "./home.js";
+import { brandLine, glyphs, c, ledgerLine, section, kv, table, success, nextStep, humanError, withSpinner } from "./ui.js";
+
+function jsonOut(data: unknown): void {
+  console.log(JSON.stringify(data, null, 2));
+}
 
 const packageVersion = (JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }).version;
 const program = new Command().name("applylocal").description("Local job application harness").version(packageVersion);
+program.action(async () => {
+  await runHome();
+});
 
 program.command("setup").description("Configure ApplyLocal").option("--section <section>", "Configure one section only: reasoning").action(async ({ section }) => {
   if (section && section !== "reasoning") throw new Error(`Unsupported setup section: ${section}. Supported: reasoning`);
@@ -38,16 +47,42 @@ program.command("setup").description("Configure ApplyLocal").option("--section <
   console.log(setup.complete ? "Setup complete." : "Setup saved but remains incomplete.");
 });
 
-program.command("status").description("Show setup status").action(async () => {
+program.command("status").description("Show setup status").option("--json", "Machine-readable output").action(async ({ json }) => {
   const state = await loadState();
   const missing = setupMissing(state);
-  console.log(JSON.stringify({ setup: missing.length ? "incomplete" : "complete", missing, reasoning: state.setup?.reasoning, evidenceSources: state.evidence.length, attentionItems: state.attention.filter((item) => !item.resolved).length }, null, 2));
+  if (json) return jsonOut({ setup: missing.length ? "incomplete" : "complete", missing, reasoning: state.setup?.reasoning, evidenceSources: state.evidence.length, attentionItems: state.attention.filter((item) => !item.resolved).length });
+  console.log(brandLine("status"));
+  console.log(section("Setup"));
+  console.log(kv("state", missing.length ? c.warn("incomplete") : c.ok("complete")));
+  for (const item of missing) console.log(kv("missing", c.warn(item)));
+  console.log(section("Reasoning"));
+  const reasoning = state.setup?.reasoning;
+  if (reasoning) console.log(kv("provider", `${reasoning.provider} ${c.dim("·")} ${c.name(reasoning.model)} ${c.dim(`(env: ${reasoning.credentialEnv})`)}`));
+  else console.log(kv("provider", c.warn("not configured")));
+  console.log(section("Evidence"));
+  console.log(kv("sources", String(state.evidence.length)));
+  console.log(kv("claims", String(state.claims.length)));
+  console.log(kv("attention", String(state.attention.filter((item) => !item.resolved).length)));
+  if (missing.length) console.log(nextStep("applylocal setup"));
 });
 
-program.command("doctor").description("Check whether ApplyLocal is ready to run").action(async () => {
+program.command("doctor").description("Check whether ApplyLocal is ready to run").option("--json", "Machine-readable output").action(async ({ json }) => {
   const checks = await runDoctor();
-  for (const check of checks) console.log(`${check.status === "pass" ? "PASS" : check.status === "warn" ? "WARN" : "FAIL"}  ${check.name}: ${check.detail}`);
-  if (checks.some(({ status }) => status === "fail")) process.exitCode = 1;
+  if (json) return jsonOut(checks);
+  console.log(brandLine("doctor"));
+  console.log(section("Checks"));
+  for (const check of checks) {
+    const mark = check.status === "pass" ? glyphs.check : check.status === "warn" ? c.warn("!") : glyphs.cross;
+    console.log(`  ${mark} ${check.name.padEnd(24)}${check.status === "pass" ? c.dim(check.detail) : check.status === "warn" ? c.warn(check.detail) : c.bad(check.detail)}`);
+  }
+  const failures = checks.filter(({ status }) => status === "fail");
+  if (failures.length) {
+    process.exitCode = 1;
+    console.log(section("Fix first"));
+    for (const failure of failures) console.log(kv("fail", c.bad(failure.name)));
+  } else {
+    console.log(success("All checks passed. Ready to apply."));
+  }
 });
 
 program.command("evaluate").description("Run the local reasoning safety dataset").option("--file <path>", "Evaluation JSON file").action(async ({ file }) => {
@@ -91,16 +126,22 @@ program.command("evals")
     void totalFabrications;
   });
 
-program.command("models").description("List models available from the configured provider").action(async () => {
+program.command("models").description("List models available from the configured provider").option("--json", "Machine-readable output").action(async ({ json }) => {
   const setup = (await loadState()).setup;
   if (!setup?.reasoning) throw new Error("Provider reasoning is not configured. Run applylocal setup.");
-  console.log(JSON.stringify(await listModels(setup.reasoning), null, 2));
+  const models = await withSpinner(`Listing models from ${setup.reasoning.provider}`, () => listModels(setup.reasoning));
+  if (json) return jsonOut(models);
+  console.log(brandLine("models"));
+  for (const model of models) console.log(`  ${glyphs.dot("created")} ${model}`);
+  if (!models.length) console.log(c.dim("  (provider returned no models)"));
 });
 
-program.command("provider-test").description("Test the configured provider with synthetic evidence").action(async () => {
+program.command("provider-test").description("Test the configured provider with synthetic evidence").option("--json", "Machine-readable output").action(async ({ json }) => {
   const setup = (await loadState()).setup;
   if (!setup?.reasoning) throw new Error("Provider reasoning is not configured. Run applylocal setup.");
-  console.log(JSON.stringify(await testProvider(setup.reasoning), null, 2));
+  const result = await withSpinner(`Verifying ${setup.reasoning.provider} with a live call`, () => testProvider(setup.reasoning));
+  if (json) return jsonOut(result);
+  console.log(success(`Provider verified: ${result.provider} · ${c.name(result.model)}`));
 });
 
 const evidence = program.command("evidence");
@@ -109,63 +150,130 @@ evidence.command("add [source]").option("--interactive", "Choose the evidence so
   const added = await addEvidence(/^https?:\/\//.test(selected) ? selected : resolve(selected));
   console.log(JSON.stringify({ id: added.id, input: added.input, kind: added.kind, addedAt: added.addedAt, extractedCharacters: added.content?.length ?? 0 }, null, 2));
 });
-evidence.command("list").action(async () => console.log(JSON.stringify((await loadState()).evidence.map(({ content, ...source }) => source), null, 2)));
+evidence.command("list").option("--json", "Machine-readable output").action(async ({ json }) => {
+  const evidence = (await loadState()).evidence;
+  if (json) return jsonOut(evidence.map(({ content, ...source }) => source));
+  console.log(brandLine("evidence"));
+  console.log(section("Registered sources"));
+  if (!evidence.length) { console.log(c.dim("  (none — run: applylocal evidence add)")); return; }
+  console.log(table(evidence.map((source) => [c.dim(source.id.slice(3, 15)), source.kind, source.input.slice(0, 56)]), ["Id", "Kind", "Input"]));
+  console.log(nextStep("applylocal evidence claims review"));
+});
 evidence.command("remove <id>").action(async (id) => { await removeEvidence(id); console.log(`Removed evidence ${id}.`); });
 evidence.command("show <id>").action(async (id) => { const source = (await loadState()).evidence.find(({ id: sourceId }) => sourceId === id); if (!source) throw new Error(`Evidence source not found: ${id}`); console.log(JSON.stringify({ ...source, content: undefined, extractedCharacters: source.content?.length ?? 0 }, null, 2)); });
 const claims = evidence.command("claims");
-claims.command("list").option("--status <status>", "Filter by unreviewed, approved, or rejected").action(async (options) => console.log(JSON.stringify((await loadState()).claims.filter((claim) => !options.status || claim.status === options.status).map(({ excerpt, ...claim }) => ({ ...claim, preview: excerpt.slice(0, 220) })), null, 2)));
+claims.command("list").option("--status <status>", "Filter by unreviewed, approved, or rejected").option("--json", "Machine-readable output").action(async (options) => {
+  const claims = (await loadState()).claims.filter((claim) => !options.status || claim.status === options.status);
+  if (options.json) return jsonOut(claims.map(({ excerpt, ...claim }) => ({ ...claim, preview: excerpt.slice(0, 220) })));
+  console.log(brandLine("claims"));
+  console.log(section(options.status ? `${options.status} claims` : "All claims"));
+  if (!claims.length) { console.log(c.dim("  (none)")); return; }
+  console.log(table(claims.slice(0, 30).map((claim) => {
+    const mark = claim.status === "approved" ? glyphs.check : claim.status === "rejected" ? glyphs.cross : c.warn("▲");
+    return [mark, c.dim(claim.id.slice(3, 15)), claim.excerpt.replace(/\s+/g, " ").slice(0, 60)];
+  }), ["", "Id", "Claim"]));
+  if (claims.length > 30) console.log(c.dim(`  …and ${claims.length - 30} more (use --json or --status)`));
+  console.log(nextStep('applylocal evidence claims approve <claim-id>'));
+});
 claims.command("approve <id>").action(async (claimId) => { const state = await loadState(); const claim = state.claims.find(({ id }) => id === claimId); if (!claim) throw new Error(`Claim not found: ${claimId}`); claim.status = "approved"; await saveState(state); console.log(`Approved ${claimId}.`); });
 claims.command("approve-source <source-id>").description("Approve every claim from one explicitly reviewed source").action(async (sourceId) => { const state = await loadState(); const matching = state.claims.filter(({ sourceId: id }) => id === sourceId); if (!matching.length) throw new Error(`No claims found for evidence source: ${sourceId}`); for (const claim of matching) claim.status = "approved"; await saveState(state); console.log(`Approved ${matching.length} claims from ${sourceId}.`); });
 claims.command("reject <id>").action(async (claimId) => { const state = await loadState(); const claim = state.claims.find(({ id }) => id === claimId); if (!claim) throw new Error(`Claim not found: ${claimId}`); claim.status = "rejected"; await saveState(state); console.log(`Rejected ${claimId}.`); });
 claims.command("review").action(async () => console.log(JSON.stringify(await reviewSummary(), null, 2)));
 
-program.command("apply <url>").option("--mode <mode>", "auto-apply or assist").action(async (url, options) => {
+program.command("apply <url>").option("--mode <mode>", "auto-apply or assist").option("--json", "Machine-readable output").action(async (url, options) => {
   const aliases: Record<string, "auto-apply" | "assist"> = { "auto-apply": "auto-apply", autoapply: "auto-apply", auto: "auto-apply", assist: "assist", review: "assist" };
   let mode: "auto-apply" | "assist" | undefined;
   if (options.mode) {
     mode = aliases[String(options.mode).toLowerCase()];
     if (!mode) throw new Error(`Unknown mode "${options.mode}". Use --mode auto-apply or --mode assist.`);
   }
-  console.log(JSON.stringify(await apply(url, mode), null, 2));
-  await printHandoff(url);
+  console.log(brandLine());
+  const run = await withSpinner(`Preparing ${url}`, () => apply(url, mode));
+  if (options.json) return jsonOut(run);
+  console.log(ledgerLine(run.title ?? url, run.status));
+  if (run.status === "submitted") {
+    console.log(success(`Application submitted and recorded. Confirmation: ${run.confirmation?.slice(0, 80)}`));
+  } else if (run.status === "waiting_for_user") {
+    console.log(c.warn("Paused for your review."));
+  } else {
+    console.log(kv("status", run.status));
+  }
+  await printHandoff(url, options.json);
 });
 
-async function printHandoff(urlOrRunId: string): Promise<void> {
+async function printHandoff(urlOrRunId: string, asJson = false): Promise<void> {
   const state = await loadState();
   const run = state.runs.find(({ id }) => id === urlOrRunId) ?? state.runs.filter(({ url }) => url === urlOrRunId).at(-1);
   if (!run || run.status !== "waiting_for_user") return;
   const pending = state.attention.filter((item) => item.runId === run.id && !item.resolved);
   if (!pending.length) return;
   const observation = run.browserSession === "worker" ? await new WorkerClient().observe(run.id).catch(() => undefined) : undefined;
-  console.log(renderHandoff(run, pending, observation));
+  if (asJson) console.log(renderHandoff(run, pending, observation));
+  else console.log(renderHandoffText(run, pending, observation));
 }
 
 const runs = program.command("runs");
-runs.command("list").action(async () => console.log(JSON.stringify((await loadState()).runs, null, 2)));
-runs.command("show <id>").action(async (runId) => {
-  const run = (await loadState()).runs.find(({ id }) => id === runId) ?? null;
-  console.log(JSON.stringify(run, null, 2));
-  if (run) await printHandoff(runId);
+runs.command("list").option("--json", "Machine-readable output").action(async ({ json }) => {
+  const state = await loadState();
+  if (json) return jsonOut(state.runs);
+  console.log(brandLine("runs"));
+  console.log(section("Runs"));
+  if (!state.runs.length) { console.log(c.dim("  (none yet — run: applylocal apply <url>)")); return; }
+  const rows = state.runs.slice(-12).reverse().map((run) => {
+    const dot = run.status === "submitted" ? glyphs.check : run.status === "failed" ? glyphs.cross : glyphs.dot(run.status);
+    return [dot, c.dim(run.id.slice(4, 14)), (run.title ?? run.url).slice(0, 48), run.status];
+  });
+  console.log(table(rows, ["", "Run", "Title", "Status"]));
+  console.log(nextStep("applylocal runs show <run-id>"));
 });
-runs.command("continue <id>").action(async (runId) => {
+runs.command("show <id>").option("--json", "Machine-readable output").action(async (runId, { json }) => {
+  const run = (await loadState()).runs.find(({ id }) => id === runId) ?? null;
+  if (json || !run) return jsonOut(run);
+  console.log(ledgerLine(run.title ?? run.url, run.status));
+  console.log(section("Details"));
+  console.log(kv("id", run.id));
+  console.log(kv("url", run.url));
+  console.log(kv("mode", run.mode));
+  console.log(kv("company", run.company ?? "—"));
+  if (run.confirmation) console.log(kv("confirmation", c.ok(run.confirmation.slice(0, 80))));
+  await printHandoff(runId);
+});
+runs.command("continue <id>").option("--json", "Machine-readable output").action(async (runId, { json }) => {
   try {
-    console.log(JSON.stringify(await continueRun(runId), null, 2));
+    const run = await withSpinner("Rescanning session and finalizing", () => continueRun(runId));
+    if (json) return jsonOut(run);
+    console.log(ledgerLine(run.title ?? run.url, run.status));
+    if (run.status === "submitted") console.log(success(`Application submitted. Confirmation: ${run.confirmation?.slice(0, 80)}`));
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
+    console.error(humanError(error));
     if (error instanceof Error && /needs \d+ more item|cannot finalize/.test(error.message)) {
       const state = await loadState();
       const run = state.runs.find(({ id }) => id === runId);
-      if (run) console.log(renderHandoff(run, state.attention.filter((item) => item.runId === runId && !item.resolved)));
+      if (run) console.log(renderHandoffText(run, state.attention.filter((item) => item.runId === runId && !item.resolved)));
     }
     process.exitCode = 1;
     return;
   }
-  await printHandoff(runId);
+  await printHandoff(runId, json);
 });
-runs.command("recover <id>").option("--confirmed-not-submitted", "Assert after manual browser inspection that no submission occurred").action(async (runId, options) => console.log(JSON.stringify(await recoverRun(runId, Boolean(options.confirmedNotSubmitted)), null, 2)));
+runs.command("recover <id>").option("--confirmed-not-submitted", "Assert after manual browser inspection that no submission occurred").option("--json", "Machine-readable output").action(async (runId, options) => {
+  const run = await recoverRun(runId, Boolean(options.confirmedNotSubmitted));
+  if (options.json) return jsonOut(run);
+  console.log(ledgerLine(run.title ?? run.url, run.status));
+  console.log(c.warn(`Run marked ${run.status}. Inspect the browser before continuing.`));
+});
 
 const attention = program.command("attention");
-attention.command("list").action(async () => console.log(JSON.stringify((await loadState()).attention.filter((item) => !item.resolved), null, 2)));
+attention.command("list").option("--json", "Machine-readable output").action(async ({ json }) => {
+  const state = await loadState();
+  const pending = state.attention.filter((item) => !item.resolved);
+  if (json) return jsonOut(pending);
+  console.log(brandLine("attention"));
+  console.log(section("Pending"));
+  if (!pending.length) { console.log(success("Nothing pending. All attention items resolved.")); return; }
+  console.log(table(pending.map((item) => [c.dim(item.id.slice(4, 16)), item.question ? c.warn("question") : "notice", (item.question ?? item.reason).slice(0, 64)]), ["Item", "Kind", "Reason"]));
+  console.log(nextStep("applylocal attention resolve <item-id> --answer \"...\""));
+});
 attention.command("resolve <id>").option("--answer <answer>", "Approved answer for the blocked question").action(async (attentionId, options) => {
   const state = await loadState();
   const item = state.attention.find(({ id }) => id === attentionId);
@@ -180,10 +288,20 @@ attention.command("resolve <id>").option("--answer <answer>", "Approved answer f
   }
   item.resolved = true;
   await saveState(state);
-  console.log(`Resolved ${attentionId}.`);
+  console.log(success(`Resolved ${attentionId}`));
+  console.log(nextStep(`applylocal runs continue ${item.runId}`));
 });
 
-program.command("applications").action(async () => console.log(JSON.stringify((await loadState()).applications, null, 2)));
+program.command("applications").option("--json", "Machine-readable output").action(async ({ json }) => {
+  const state = await loadState();
+  if (json) return jsonOut(state.applications);
+  console.log(brandLine("applications"));
+  console.log(section("Ledger"));
+  if (!state.applications.length) { console.log(c.dim("  (no confirmed submissions yet)")); return; }
+  console.log(table(state.applications.map((application) => [glyphs.check, c.dim(application.submittedAt.slice(0, 10)), (application.title ?? application.url).slice(0, 46), application.company ?? c.dim("—")]), ["", "Date", "Role", "Company"]));
+  console.log(section("Totals"));
+  console.log(kv("confirmed", String(state.applications.length)));
+});
 
 program.command("worker").description("Run the persistent browser worker").option("--port <port>", "Local worker port", "4317").action(async ({ port }) => {
   const server = startWorker(Number(port));

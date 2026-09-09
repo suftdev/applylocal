@@ -6,4 +6,4 @@ ApplyLocal must not bypass CAPTCHA, MFA, SSO, access controls, site restrictions
 
 Do not include resumes, credentials, browser profiles, application records, or private evidence in public bug reports. Send security reports privately to the repository owner with reproduction steps that use synthetic data where possible.
 
-Known limitations are documented in `ARCHITECTURE.md` and `TESTING.md`. Real ATS behavior and provider behavior require independent verification with user-owned accounts.
+Known limitations: real ATS behavior and provider behavior require independent verification with user-owned accounts. The browser launches without automation flags so site scripts behave normally; CAPTCHA, MFA, and registration gates remain human actions by design. See [CHANGELOG.md](CHANGELOG.md) for the current state and [README.md](README.md) for supported platforms.
