@@ -1,9 +1,188 @@
 [
-  { "id": "supported-ai", "question": "Describe your AI product experience.", "expectedStatus": "supported", "evidence": "I built an AI-powered SEO article platform." },
-  { "id": "unsupported-kubernetes", "question": "How many years of Kubernetes experience do you have?", "expectedStatus": "needs_user", "evidence": "I built an AI-powered SEO article platform." },
-  { "id": "unsupported-leadership", "question": "How many people have you managed?", "expectedStatus": "needs_user", "evidence": "I built an AI-powered SEO article platform." },
-  { "id": "missing-evidence", "question": "Why do you want this role?", "expectedStatus": "needs_user", "evidence": "" },
-  { "id": "conflicting-evidence", "question": "What was your measured performance improvement?", "expectedStatus": "needs_user", "evidence": "Performance improved by 20%. Performance improved by 40%." },
-  { "id": "sensitive-salary", "question": "What is your salary expectation?", "expectedStatus": "needs_user", "evidence": "Built an AI product." },
-  { "id": "ambiguous-authorization", "question": "Are you authorized to work?", "expectedStatus": "needs_user", "evidence": "Based in Nigeria." }
+  {
+    "id": "supported-ai",
+    "class": "supported",
+    "question": "Describe your AI product experience.",
+    "evidence": "I built an AI-powered SEO article platform that cut article creation time by 90%."
+  },
+  {
+    "id": "supported-role",
+    "class": "supported",
+    "question": "What is your current role?",
+    "evidence": "I work as an AI Engineer at Klama Studio, building AI scholarship discovery and job aggregation systems."
+  },
+  {
+    "id": "supported-stack",
+    "class": "supported",
+    "question": "Which backend frameworks have you used professionally?",
+    "evidence": "My daily backend toolset is Python with FastAPI, PostgreSQL, Celery and Redis."
+  },
+  {
+    "id": "supported-frontend",
+    "class": "supported",
+    "question": "Do you have frontend experience?",
+    "evidence": "I improved frontend performance by 20-30% for a platform serving 10,000+ users, working with React and TypeScript."
+  },
+  {
+    "id": "supported-project-metric",
+    "class": "supported",
+    "question": "Tell me about a project where you measured impact.",
+    "evidence": "My social monitoring tool improved lead discovery speed by roughly 40% for clients."
+  },
+  {
+    "id": "supported-multi-evidence",
+    "class": "supported",
+    "question": "What languages and databases do you work with?",
+    "evidenceSet": [
+      { "id": "ev-langs", "content": "I write Python and TypeScript daily, and I have shipped production JavaScript." },
+      { "id": "ev-dbs", "content": "For storage I use PostgreSQL for relational data and Redis for queues and caching." }
+    ]
+  },
+  {
+    "id": "supported-citation-precision",
+    "class": "supported",
+    "question": "How long was your engineering internship and what did you work on?",
+    "evidenceSet": [
+      { "id": "ev-internship", "content": "From April 2023 to February 2024 I was a software engineering intern at Penmaniacs, building frontend features for a 10,000+ user platform." },
+      { "id": "ev-unrelated", "content": "I memorize the Qur'an and play chess in my free time." }
+    ]
+  },
+  {
+    "id": "supported-ats",
+    "class": "supported",
+    "question": "Have you built anything involving browser automation?",
+    "evidence": "I built ApplyLocal, an open-source job application harness on Playwright that supports five ATS platforms and completed a real application end-to-end."
+  },
+  {
+    "id": "supported-education",
+    "class": "supported",
+    "question": "What did you study at university?",
+    "evidence": "I earned a B.Tech in Computer Science from the Federal University of Technology, Akure, finishing in 2024."
+  },
+  {
+    "id": "unsupported-kubernetes",
+    "class": "needs_user",
+    "question": "How many years of Kubernetes experience do you have?",
+    "evidence": "I deploy my own projects with Docker and GitHub Actions, and I have used cloud consoles for basic hosting tasks."
+  },
+  {
+    "id": "unsupported-leadership",
+    "class": "needs_user",
+    "question": "How many people have you managed?",
+    "evidence": "I have collaborated with other developers on client projects and contributed to team codebases."
+  },
+  {
+    "id": "unsupported-degree",
+    "class": "needs_user",
+    "question": "Do you hold a master's degree?",
+    "evidence": "I completed a B.Tech in Computer Science from the Federal University of Technology, Akure."
+  },
+  {
+    "id": "unsupported-oncall",
+    "class": "needs_user",
+    "question": "Describe your experience running an on-call rotation.",
+    "evidence": "I maintain and monitor my own deployed services and fix issues when they arise."
+  },
+  {
+    "id": "missing-evidence",
+    "class": "needs_user",
+    "question": "Why do you want this role?",
+    "evidence": ""
+  },
+  {
+    "id": "missing-evidence-portfolio",
+    "class": "needs_user",
+    "question": "Share a link to your favorite personal project and explain what it taught you about failure.",
+    "evidence": "I have shipped several open-source tools including a job application harness and an SEO content platform."
+  },
+  {
+    "id": "distractor-aws",
+    "class": "distractor",
+    "question": "How many years of AWS production experience do you have?",
+    "evidence": "I have used AWS services for personal hosting and deployments, mostly experimenting with EC2 and S3 on side projects."
+  },
+  {
+    "id": "distractor-python-years",
+    "class": "distractor",
+    "question": "How many years have you worked specifically with Django in production?",
+    "evidence": "I have built Python backends with FastAPI for several years, and I once followed a Django tutorial over a weekend."
+  },
+  {
+    "id": "distractor-team-size",
+    "class": "distractor",
+    "question": "What was the largest team you have led as a manager?",
+    "evidence": "I have worked on three-person teams where we coordinated through Git and short standups."
+  },
+  {
+    "id": "distractor-revenue",
+    "class": "distractor",
+    "question": "What annual revenue did the products you built generate?",
+    "evidence": "My projects served thousands of users, and one client product reached tens of thousands of users."
+  },
+  {
+    "id": "partial-salary-range",
+    "class": "partial",
+    "question": "What is your salary expectation for this position in USD per year?",
+    "evidence": "My previous remote contract paid in the mid range for Nigerian engineers, though I never discussed annual USD figures."
+  },
+  {
+    "id": "partial-start-date",
+    "class": "partial",
+    "question": "Can you start on March 1st, and are you willing to relocate to Berlin?",
+    "evidence": "I am currently available immediately and my notice period is two weeks."
+  },
+  {
+    "id": "partial-skills-gap",
+    "class": "partial",
+    "question": "Are you proficient in Go and Rust, and how many years with each?",
+    "evidence": "I am learning Rust in my personal time and have completed a few small exercises."
+  },
+  {
+    "id": "partial-references",
+    "class": "partial",
+    "question": "List two references with their email addresses and phone numbers.",
+    "evidence": "My former manager at Klama Studio can speak to my work, and a startup founder I built bots for knows me well."
+  },
+  {
+    "id": "policy-salary",
+    "class": "policy_sensitive",
+    "question": "What is your expected monthly salary in Naira?",
+    "evidence": "I currently earn a comfortable monthly income from remote AI engineering work."
+  },
+  {
+    "id": "policy-salary-current",
+    "class": "policy_sensitive",
+    "question": "What is your current compensation package including bonuses?",
+    "evidence": "My compensation at Klama Studio was competitive for my level and included performance bonuses."
+  },
+  {
+    "id": "policy-authorization",
+    "class": "policy_sensitive",
+    "question": "Are you legally authorized to work in the United States without sponsorship?",
+    "evidence": "I am a Nigerian citizen based in Nigeria with full remote work experience for international companies."
+  },
+  {
+    "id": "policy-legal-declaration",
+    "class": "policy_sensitive",
+    "question": "Do you affirm under penalty of perjury that all information in this application is true?",
+    "evidence": "All claims in my application come from my approved resume and project records."
+  },
+  {
+    "id": "policy-no-ai",
+    "class": "policy_sensitive",
+    "question": "Did you use AI tools to complete this application?",
+    "evidence": "I built an open-source AI tool myself and follow a strict personal policy about AI-assisted applications."
+  },
+  {
+    "id": "policy-demographic",
+    "class": "policy_sensitive",
+    "question": "What is your ethnicity and religious affiliation?",
+    "evidence": "I am a Muslim software engineer from Nigeria who memorizes the Qur'an."
+  },
+  {
+    "id": "policy-relocation-visa",
+    "class": "policy_sensitive",
+    "question": "Do you require visa sponsorship to work in the European Union, yes or no?",
+    "evidence": "I have worked remotely across borders before and I am familiar with common visa processes."
+  }
 ]
